@@ -242,7 +242,6 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
         <span style="display:flex;align-items:center;font-size:13px;color:var(--ink-muted);">〜</span>
         <input type="time" id="meeting-end" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;" value="18:00">
       </div>
-      <button onclick="saveAgenda()" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">保存してMARCシートに反映</button>
     </div>
 
     <!-- チーム管理 -->
@@ -254,7 +253,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       <div id="team-editor" style="display:flex;flex-direction:column;gap:12px;"></div>
       <!-- 保存ボタンは1つだけここに静的配置 -->
       <div id="team-save-wrap" style="display:none;margin-top:14px;">
-        <button onclick="saveAllTeams()" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">💾 チーム編成を保存する</button>
+        <button onclick="saveAllTeams()" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">保存してMARCシートに反映</button>
       </div>
     </div>
 
@@ -312,32 +311,6 @@ function toggleAgendaInput(el){
   document.getElementById('agenda-custom-input').style.display = el.value === 'custom' ? 'block' : 'none';
 }
 
-function saveAgenda(){
-  const type = document.querySelector('input[name="agenda-type"]:checked')?.value;
-  const text = type === 'custom' ? (document.getElementById('agenda-text')?.value.trim()||'') : '稽古メニューをつくる';
-  const date = document.getElementById('meeting-date')?.value;
-  const start = document.getElementById('meeting-start')?.value;
-  const end = document.getElementById('meeting-end')?.value;
-  if(!text){ showToast('議題を入力してください'); return; }
-  if(!date){ showToast('日付を入力してください'); return; }
-  const btn = document.querySelector('[onclick="saveAgenda()"]');
-  if(btn){ btn.disabled=true; btn.textContent='⏳ 保存中…'; }
-  fetch(GAS, {
-    method:'POST',
-    body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveAgenda', text, date, start, end })
-  }).then(function(r){ return r.json(); })
-  .then(function(res){
-    if(res.status==='ok'){
-      localStorage.setItem('marc_agenda_sagakita', JSON.stringify({ text, date, start, end }));
-      showToast('✓ 議題を保存しました（MARCシートに反映）');
-    } else {
-      showToast('⚠ 保存失敗: '+(res.message||'error'), 4000);
-    }
-  }).catch(function(e){ showToast('⚠ 通信エラー: '+e, 4000); })
-  .finally(function(){
-    if(btn){ btn.disabled=false; btn.textContent='保存してMARCシートに反映'; }
-  });
-}
 
 function addTeam(){
   teams.push({ name:'チーム'+String.fromCharCode(65+teams.length), leader:'', sub:'', members:[], theme:'' });
@@ -357,21 +330,30 @@ function saveAllTeams(){
     teams[i].theme = theme;
   });
   saveTeamsLocal();
+  const agendaType = document.querySelector('input[name="agenda-type"]:checked')?.value;
+  const agendaText = agendaType === 'custom' ? (document.getElementById('agenda-text')?.value.trim()||'') : '稽古メニューをつくる';
+  const agendaDate  = document.getElementById('meeting-date')?.value  || '';
+  const agendaStart = document.getElementById('meeting-start')?.value || '';
+  const agendaEnd   = document.getElementById('meeting-end')?.value   || '';
+  if(agendaDate){
+    localStorage.setItem('marc_agenda_sagakita', JSON.stringify({ text:agendaText, date:agendaDate, start:agendaStart, end:agendaEnd }));
+  }
   const btn = document.getElementById('team-save-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳ 保存中…'; }
-  fetch(GAS, {
-    method:'POST',
-    body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveTeams', teams: teams })
-  }).then(function(r){ return r.json(); })
-  .then(function(res){
-    if(res.status==='ok'){
-      showToast('✓ チーム編成を保存しました（MARCシートに反映）');
-    } else {
-      showToast('⚠ 保存失敗: '+(res.message||'error'), 4000);
-    }
+  const posts = [
+    fetch(GAS, { method:'POST', body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveTeams', teams: teams }) }).then(function(r){ return r.json(); })
+  ];
+  if(agendaDate && agendaText){
+    posts.push(fetch(GAS, { method:'POST', body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveAgenda', text:agendaText, date:agendaDate, start:agendaStart, end:agendaEnd }) }).then(function(r){ return r.json(); }));
+  }
+  Promise.all(posts)
+  .then(function(results){
+    const allOk = results.every(function(r){ return r.status==='ok'; });
+    if(allOk) showToast('✓ 議題・チーム編成をMARCシートに反映しました');
+    else showToast('⚠ 一部の保存に失敗しました', 4000);
   }).catch(function(e){ showToast('⚠ 通信エラー: '+e, 4000); })
   .finally(function(){
-    if(btn){ btn.disabled=false; btn.textContent='💾 チーム編成を保存する'; }
+    if(btn){ btn.disabled=false; btn.textContent='保存してMARCシートに反映'; }
     renderTeams();
   });
 }
