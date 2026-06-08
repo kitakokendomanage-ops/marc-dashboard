@@ -210,6 +210,17 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="tab-panel" id="tab-team">
   <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
 
+    <!-- カレンダー予定 -->
+    <div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow);padding:16px 20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);">📅 今後の予定</div>
+        <a href="https://calendar.google.com/calendar/r?cid=f73c9138556948d4566156c4b995a372a35d0bb1e51b2f5c6e2b3342a25e0531%40group.calendar.google.com" target="_blank" style="font-size:11px;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:4px;">📅 カレンダーを開く</a>
+      </div>
+      <div id="cal-events-dash" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="text-align:center;padding:16px;color:var(--ink-muted);font-size:12px;"><div class="spinner" style="margin:0 auto 8px;"></div>読み込み中…</div>
+      </div>
+    </div>
+
     <!-- ミーティング議題 -->
     <div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow);padding:16px 20px;">
       <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px;">📋 ミーティング議題設定</div>
@@ -241,6 +252,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
         <button onclick="addTeam()" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">＋ チームを追加</button>
       </div>
       <div id="team-editor" style="display:flex;flex-direction:column;gap:12px;"></div>
+      <!-- 保存ボタンは1つだけここに静的配置 -->
+      <div id="team-save-wrap" style="display:none;margin-top:14px;">
+        <button onclick="saveAllTeams()" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">💾 チーム編成を保存する</button>
+      </div>
     </div>
 
   </div>
@@ -286,10 +301,12 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 const GAS = 'https://script.google.com/macros/s/AKfycbzh2id2zYOwZecGMIiZG3-n0Juqa0KKQRjchXurVbjDnTEKKgejGHDe5LMiJKq-Zk4v/exec';
 
 let _toastTimer = null;
-// ===== チーム管理 =====
-let teams = JSON.parse(localStorage.getItem('marc_teams') || '[]');
+const WRITE_TOKEN = 'marc2025SagaKendo';
 
-function saveTeams(){ localStorage.setItem('marc_teams', JSON.stringify(teams)); }
+// ===== チーム管理 =====
+let teams = JSON.parse(localStorage.getItem('marc_teams_sagakita') || '[]');
+
+function saveTeamsLocal(){ localStorage.setItem('marc_teams_sagakita', JSON.stringify(teams)); }
 
 function toggleAgendaInput(el){
   document.getElementById('agenda-custom-input').style.display = el.value === 'custom' ? 'block' : 'none';
@@ -303,18 +320,33 @@ function saveAgenda(){
   const end = document.getElementById('meeting-end')?.value;
   if(!text){ showToast('議題を入力してください'); return; }
   if(!date){ showToast('日付を入力してください'); return; }
-  localStorage.setItem('marc_agenda', JSON.stringify({ text, date, start, end }));
-  showToast('✓ 議題を保存しました');
+  const btn = document.querySelector('[onclick="saveAgenda()"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ 保存中…'; }
+  fetch(GAS, {
+    method:'POST',
+    body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveAgenda', text, date, start, end })
+  }).then(function(r){ return r.json(); })
+  .then(function(res){
+    if(res.status==='ok'){
+      localStorage.setItem('marc_agenda_sagakita', JSON.stringify({ text, date, start, end }));
+      showToast('✓ 議題を保存しました（MARCシートに反映）');
+    } else {
+      showToast('⚠ 保存失敗: '+(res.message||'error'), 4000);
+    }
+  }).catch(function(e){ showToast('⚠ 通信エラー: '+e, 4000); })
+  .finally(function(){
+    if(btn){ btn.disabled=false; btn.textContent='保存してMARCシートに反映'; }
+  });
 }
 
 function addTeam(){
   teams.push({ name:'チーム'+String.fromCharCode(65+teams.length), leader:'', sub:'', members:[], theme:'' });
-  saveTeams(); renderTeams();
+  saveTeamsLocal(); renderTeams();
 }
 
 function deleteTeam(i){
   if(!confirm('このチームを削除しますか？')) return;
-  teams.splice(i,1); saveTeams(); renderTeams();
+  teams.splice(i,1); saveTeamsLocal(); renderTeams();
 }
 
 function saveAllTeams(){
@@ -324,15 +356,24 @@ function saveAllTeams(){
     teams[i].name = name;
     teams[i].theme = theme;
   });
-  saveTeams(); showToast('✓ チーム設定を保存しました'); renderTeams();
-}
-
-function saveTeam(i){
-  const name = document.getElementById('team-'+i+'-name')?.value.trim()||'';
-  const theme = document.getElementById('team-'+i+'-theme')?.value.trim()||'';
-  teams[i].name = name;
-  teams[i].theme = theme;
-  saveTeams(); showToast('✓ 「'+name+'」を保存しました'); renderTeams();
+  saveTeamsLocal();
+  const btn = document.getElementById('team-save-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ 保存中…'; }
+  fetch(GAS, {
+    method:'POST',
+    body: JSON.stringify({ _token: WRITE_TOKEN, action:'saveTeams', teams: teams })
+  }).then(function(r){ return r.json(); })
+  .then(function(res){
+    if(res.status==='ok'){
+      showToast('✓ チーム編成を保存しました（MARCシートに反映）');
+    } else {
+      showToast('⚠ 保存失敗: '+(res.message||'error'), 4000);
+    }
+  }).catch(function(e){ showToast('⚠ 通信エラー: '+e, 4000); })
+  .finally(function(){
+    if(btn){ btn.disabled=false; btn.textContent='💾 チーム編成を保存する'; }
+    renderTeams();
+  });
 }
 
 function toggleMember(teamIdx, memberName){
@@ -347,14 +388,13 @@ function toggleMember(teamIdx, memberName){
   t.members = members;
   t.leader = members[0] || '';
   t.sub = members[1] || '';
-  saveTeams(); renderTeams();
+  saveTeamsLocal(); renderTeams();
 }
 
 function getAllMembers(){
   if(typeof store !== 'undefined' && store.p && store.p.length){
     return [...new Set(store.p.map(p=>p['氏名']||p['名前']||'').filter(Boolean))].sort();
   }
-  // データ未収集時はサンプル
   return [];
 }
 
@@ -362,7 +402,13 @@ function escHtmlT(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&
 
 function renderTeams(){
   const el = document.getElementById('team-editor'); if(!el) return;
-  if(!teams.length){ el.innerHTML='<div style="font-size:13px;color:var(--ink-muted);text-align:center;padding:20px 0;">「＋ チームを追加」からチームを作成してください</div>'; return; }
+  const wrap = document.getElementById('team-save-wrap');
+  if(!teams.length){
+    el.innerHTML='<div style="font-size:13px;color:var(--ink-muted);text-align:center;padding:20px 0;">「＋ チームを追加」からチームを作成してください</div>';
+    if(wrap) wrap.style.display='none';
+    return;
+  }
+  if(wrap) wrap.style.display='block';
   const allMembers = getAllMembers();
 
   el.innerHTML = teams.map(function(t,i){
@@ -373,12 +419,11 @@ function renderTeams(){
       return '<span style="display:inline-flex;align-items:center;background:var(--navy-pale);color:var(--navy);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;cursor:pointer;" onclick="toggleMember('+i+',\''+escHtmlT(m)+'\')">'+escHtmlT(m)+badge+' ✕</span>';
     }).join('');
 
-    // 全部員リスト（未割り当て or 他チームのメンバーも表示、クリックでこのチームに追加）
     const memberButtons = allMembers.length
       ? allMembers.map(function(m){
           const inThis = (t.members||[]).includes(m);
           const inOther = !inThis && teams.some(function(ot, oi){ return oi!==i && (ot.members||[]).includes(m); });
-          if(inThis) return ''; // 既に追加済みは非表示
+          if(inThis) return '';
           const style = inOther
             ? 'background:#F3F4F6;color:var(--ink-muted);border:1px solid var(--border);opacity:.5;cursor:not-allowed;'
             : 'background:var(--surface);color:var(--navy);border:1px solid var(--border);cursor:pointer;';
@@ -393,17 +438,69 @@ function renderTeams(){
         '<input id="team-'+i+'-name" value="'+escHtmlT(t.name)+'" style="font-size:14px;font-weight:700;border:none;background:transparent;color:var(--navy);width:140px;padding:0;font-family:\'Noto Sans JP\',sans-serif;" placeholder="チーム名">'+
         '<button onclick="deleteTeam('+i+')" style="background:rgba(239,68,68,.1);color:#EF4444;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:\'Noto Sans JP\',sans-serif;">削除</button>'+
       '</div>'+
-      // 選択済みメンバー
       ((t.members||[]).length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+memberBadges+'</div>' : '')+
-      // 部員クリックで追加
       '<div style="font-size:10px;font-weight:700;color:var(--ink-muted);margin-bottom:6px;letter-spacing:.06em;">追加する部員をクリック</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">'+memberButtons+'</div>'+
       '<div style="margin-bottom:0;"><div style="font-size:10px;font-weight:700;color:var(--ink-muted);margin-bottom:4px;">稽古テーマ（未入力で「自由に設定してください」と表示）</div>'+
         '<input id="team-'+i+'-theme" value="'+escHtmlT(t.theme)+'" placeholder="例：面打ちの踏み込みを意識する" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:\'Noto Sans JP\',sans-serif;"></div>'+
     '</div>';
-  }).join('') +
-  '<button onclick="saveAllTeams()" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:\'Noto Sans JP\',sans-serif;margin-top:14px;">保存する</button>';
+  }).join('');
+  // 保存ボタンのidを付与
+  const saveBtn = document.querySelector('#team-save-wrap button');
+  if(saveBtn && !saveBtn.id) saveBtn.id='team-save-btn';
 }
+
+// ===== カレンダー・議題・チームをGASから取得 =====
+function loadNewsData(){
+  const calEl = document.getElementById('cal-events-dash');
+  fetchGAS({ action:'getNews' })
+  .then(function(data){
+    if(calEl){
+      if(data.calendar && data.calendar.length){
+        calEl.innerHTML = data.calendar.map(function(ev){
+          const bg = ev.today ? 'var(--navy)' : 'var(--navy-pale)';
+          const col = ev.today ? '#fff' : 'var(--navy)';
+          return '<div style="display:flex;align-items:center;gap:10px;">'+
+            '<div style="background:'+bg+';color:'+col+';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;min-width:44px;text-align:center;">'+escHtmlT(ev.date||'')+'</div>'+
+            '<div style="font-size:13px;color:var(--ink);">'+escHtmlT(ev.title+(ev.time?' '+ev.time:''))+'</div>'+
+          '</div>';
+        }).join('');
+      } else {
+        calEl.innerHTML = '<div style="font-size:12px;color:var(--ink-muted);text-align:center;padding:12px 0;">今後30日間の予定はありません</div>';
+      }
+    }
+    const agenda = data.agenda || JSON.parse(localStorage.getItem('marc_agenda_sagakita')||'null');
+    if(agenda){
+      if(agenda.date){ const el=document.getElementById('meeting-date'); if(el) el.value=agenda.date; }
+      if(agenda.start){ const el=document.getElementById('meeting-start'); if(el) el.value=agenda.start; }
+      if(agenda.end){ const el=document.getElementById('meeting-end'); if(el) el.value=agenda.end; }
+      if(agenda.text && agenda.text !== '稽古メニューをつくる'){
+        const r=document.querySelector('input[value="custom"]'); if(r) r.checked=true;
+        const inp=document.getElementById('agenda-custom-input'); if(inp) inp.style.display='block';
+        const t=document.getElementById('agenda-text'); if(t) t.value=agenda.text;
+      }
+    }
+    if(data.teams && data.teams.length){
+      teams = data.teams;
+      localStorage.setItem('marc_teams_sagakita', JSON.stringify(teams));
+      renderTeams();
+    }
+  }).catch(function(){
+    if(calEl) calEl.innerHTML='<div style="font-size:12px;color:var(--ink-muted);text-align:center;padding:12px 0;">予定の読み込みに失敗しました</div>';
+    const agenda = JSON.parse(localStorage.getItem('marc_agenda_sagakita')||'null');
+    if(agenda){
+      if(agenda.date){ const el=document.getElementById('meeting-date'); if(el) el.value=agenda.date; }
+      if(agenda.start){ const el=document.getElementById('meeting-start'); if(el) el.value=agenda.start; }
+      if(agenda.end){ const el=document.getElementById('meeting-end'); if(el) el.value=agenda.end; }
+      if(agenda.text && agenda.text !== '稽古メニューをつくる'){
+        const r=document.querySelector('input[value="custom"]'); if(r) r.checked=true;
+        const inp=document.getElementById('agenda-custom-input'); if(inp) inp.style.display='block';
+        const t=document.getElementById('agenda-text'); if(t) t.value=agenda.text;
+      }
+    }
+  });
+}
+
 
 function showToast(msg, dur) {
   dur = dur || 2800;
@@ -733,17 +830,7 @@ function analyzeCoaching(){
 }
 // チーム管理・議題初期化
 renderTeams();
-const _savedAgenda = JSON.parse(localStorage.getItem('marc_agenda')||'null');
-if(_savedAgenda){
-  if(_savedAgenda.date){ const el=document.getElementById('meeting-date'); if(el) el.value=_savedAgenda.date; }
-  if(_savedAgenda.start){ const el=document.getElementById('meeting-start'); if(el) el.value=_savedAgenda.start; }
-  if(_savedAgenda.end){ const el=document.getElementById('meeting-end'); if(el) el.value=_savedAgenda.end; }
-  if(_savedAgenda.text && _savedAgenda.text !== '稽古メニューをつくる'){
-    const r=document.querySelector('input[value="custom"]'); if(r) r.checked=true;
-    const inp=document.getElementById('agenda-custom-input'); if(inp) inp.style.display='block';
-    const t=document.getElementById('agenda-text'); if(t) t.value=_savedAgenda.text;
-  }
-}
+loadNewsData();
 </script>
 </body>
 </html>
