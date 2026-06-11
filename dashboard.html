@@ -544,7 +544,7 @@ function setWeekRange(){ const today=new Date(),day=today.getDay(); const mon=ne
 document.addEventListener('click', function(e){
   const t=e.target;
   const tabBtn=t.closest('[data-tab]');
-  if(tabBtn&&tabBtn.classList.contains('tab-btn')){ const id=tabBtn.dataset.tab; document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b===tabBtn)); document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id)); if(id==='trend'&&!trendRendered&&store.r.length) renderTrend(); return; }
+  if(tabBtn&&tabBtn.classList.contains('tab-btn')){ const id=tabBtn.dataset.tab; document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b===tabBtn)); document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id)); if(id==='trend'&&!trendRendered&&(store.r.length||store.p.length)) renderTrend(); return; }
   if(t.id==='collectBtn'){ collectAll(); return; }
   if(t.id==='analyzeBtn'){ analyzeCoaching(); return; }
   const sortBtn=t.closest('[data-sort]');
@@ -627,14 +627,15 @@ function renderRecent(selectedDate){
   if(!latest) return;
   const dL=store.d.filter(r=>getDate(r)===latest);
   const rL=store.r.filter(r=>getDate(r)===latest);
-  document.getElementById('k-declare').textContent=dL.length;
+  const dLUniq=new Set(dL.map(r=>getName(r))).size;
+  document.getElementById('k-declare').textContent=dLUniq;
   document.getElementById('k-declare-date').textContent=latest;
   const totalMembers=allNames().length;
-  const declarePct=totalMembers>0?Math.round(dL.length/totalMembers*100):0;
+  const declarePct=totalMembers>0?Math.round(dLUniq/totalMembers*100):0;
   const declareBar=document.getElementById('k-declare-bar');
   if(declareBar) declareBar.style.width=declarePct+'%';
   const declareDetail=document.getElementById('k-declare-detail');
-  if(declareDetail) declareDetail.textContent=totalMembers>0?dL.length+'名 / '+totalMembers+'名が宣言':'';
+  if(declareDetail) declareDetail.textContent=totalMembers>0?dLUniq+'名 / '+totalMembers+'名が宣言':'';
   document.getElementById('k-reflect').textContent=rL.length;
   const reflectPct=dL.length?Math.round(rL.length/dL.length*100):0;
   document.getElementById('k-reflect-rate').textContent=dL.length?'提出率 '+reflectPct+'%':'提出率 —%';
