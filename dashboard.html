@@ -442,7 +442,8 @@ function renderTeams(){
 // ===== カレンダー・議題・チームをGASから取得 =====
 function loadNewsData(){
   const calEl = document.getElementById('cal-events-dash');
-  fetchGAS({ action:'getNews' })
+  fetch(GAS + '?action=getNews', { method: 'GET' })
+  .then(function(r){ return r.json(); })
   .then(function(data){
     if(calEl){
       if(data.calendar && data.calendar.length){
