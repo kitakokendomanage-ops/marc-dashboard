@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MARC 顧問ダッシュボード</title>
+<meta http-equiv="refresh" content="0; url=./dashboard.html">
+<script>
+  // PWAのstart_url（"./"）がここに来た場合、即座にdashboard.htmlへ転送する。
+  // クエリパラメータやハッシュも保持して転送する。
+  location.replace('./dashboard.html' + location.search + location.hash);
+</script>
+</head>
+<body>
+  <p>読み込み中…自動で移動しない場合は<a href="./dashboard.html">こちら</a>をタップしてください。</p>
+</body>
+</html>
